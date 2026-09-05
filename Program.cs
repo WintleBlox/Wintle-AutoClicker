@@ -43,8 +43,7 @@ public sealed class MainForm : Form
     readonly Label status = new();
     readonly Label cps = new();
     readonly Label count = new();
-    readonly Timer stats = new() { Interval = 250 };
-    readonly Random rng = new();
+    readonly System.Windows.Forms.Timer stats = new() { Interval = 250 };
     readonly Stopwatch clock = Stopwatch.StartNew();
     CancellationTokenSource? cts;
     long totalClicks, windowClicks, windowStart;
@@ -110,16 +109,26 @@ public sealed class MainForm : Form
         running = true; totalClicks = 0; windowClicks = 0; windowStart = clock.ElapsedMilliseconds;
         cts = new CancellationTokenSource();
         start.Text = "STOP  •  F6"; start.BackColor = Color.FromArgb(220, 75, 75); status.Text = "●  Running"; status.ForeColor = Color.LightGreen;
-        var token = cts.Token; bool right = button.SelectedIndex == 1; int baseDelay = (int)interval.Value; int maxClicks = (int)limit.Value;
+        var token = cts.Token;
+        bool right = button.SelectedIndex == 1;
+        int baseDelay = (int)interval.Value;
+        int maxClicks = (int)limit.Value;
+        bool useRandom = randomize.Checked;
+        int randomRange = (int)randomAmount.Value;
+
         _ = Task.Run(async () =>
         {
+            var rng = new Random();
             while (!token.IsCancellationRequested && (maxClicks == 0 || Interlocked.Read(ref totalClicks) < maxClicks))
             {
                 SendMouseClick(right);
-                Interlocked.Increment(ref totalClicks); Interlocked.Increment(ref windowClicks);
+                Interlocked.Increment(ref totalClicks);
+                Interlocked.Increment(ref windowClicks);
                 int delay = baseDelay;
-                if (randomize.Checked) delay = Math.Max(1, baseDelay + rng.Next(-(int)randomAmount.Value, (int)randomAmount.Value + 1));
-                try { await Task.Delay(delay, token); } catch (TaskCanceledException) { break; }
+                if (useRandom && randomRange > 0)
+                    delay = Math.Max(1, baseDelay + rng.Next(-randomRange, randomRange + 1));
+                try { await Task.Delay(delay, token); }
+                catch (TaskCanceledException) { break; }
             }
             if (!token.IsCancellationRequested && IsHandleCreated) BeginInvoke(Stop);
         }, token);
@@ -128,7 +137,11 @@ public sealed class MainForm : Form
     static void SendMouseClick(bool right)
     {
         uint down = right ? RIGHTDOWN : LEFTDOWN, up = right ? RIGHTUP : LEFTUP;
-        var input = new[] { new INPUT { type = INPUT_MOUSE, mi = new MOUSEINPUT { dwFlags = down } }, new INPUT { type = INPUT_MOUSE, mi = new MOUSEINPUT { dwFlags = up } } };
+        var input = new[]
+        {
+            new INPUT { type = INPUT_MOUSE, mi = new MOUSEINPUT { dwFlags = down } },
+            new INPUT { type = INPUT_MOUSE, mi = new MOUSEINPUT { dwFlags = up } }
+        };
         SendInput(2, input, Marshal.SizeOf<INPUT>());
     }
 
@@ -144,7 +157,8 @@ public sealed class MainForm : Form
         if (elapsed >= 1000)
         {
             double value = Interlocked.Exchange(ref windowClicks, 0) * 1000.0 / elapsed;
-            cps.Text = $"CPS   {value:0.0}"; windowStart = now;
+            cps.Text = $"CPS   {value:0.0}";
+            windowStart = now;
         }
         count.Text = $"Clicks   {Interlocked.Read(ref totalClicks):N0}";
     }

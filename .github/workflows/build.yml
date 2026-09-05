@@ -5,20 +5,42 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.x'
-      - name: Publish
+
+      - name: Publish Windows EXE
         run: dotnet publish Wintle-AutoClicker.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish
-      - name: Upload EXE
+
+      - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: Wintle-AutoClicker-win-x64
           path: publish/Wintle-AutoClicker.exe
+
+      - name: Create v1.0.0 Release
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view v1.0.0 >/dev/null 2>&1; then
+            gh release create v1.0.0 publish/Wintle-AutoClicker.exe \
+              --target "$GITHUB_SHA" \
+              --title "Wintle-AutoClicker v1.0.0" \
+              --notes "Initial release of Wintle-AutoClicker.\n\nWindows x64 standalone executable." \
+              --latest
+          else
+            echo "v1.0.0 already exists; skipping release creation."
+          fi
